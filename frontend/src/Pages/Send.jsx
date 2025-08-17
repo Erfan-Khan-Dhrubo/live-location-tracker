@@ -7,14 +7,9 @@ const Send = () => {
   const [isSharingLocation, setIsSharingLocation] = useState(false);
   const [locationInterval, setLocationInterval] = useState(null);
   const [connectedReceivers, setConnectedReceivers] = useState(new Map());
-  //  A Map is like an object, but it remembers insertion order and has methods like .set, .get, .delete.
-  // Example:
-  //    const map = new Map();
-  //    map.set("id1", "User A");
-  //    map.set("id2", "User B");
-  //    console.log(map.get("id1")); // "User A"
-
   const [pendingRequests, setPendingRequests] = useState(0);
+  const [respondedReceivers, setRespondedReceivers] = useState(new Set()); // Track which receivers have responded
+  const [hasInitiatedConnection, setHasInitiatedConnection] = useState(false); // Track if sender has initiated connection
   const [myName, setMyName] = useState("");
   const room = "56"; // static room for demo
 
@@ -38,7 +33,7 @@ const Send = () => {
   useEffect(() => {
     socket.on("accept_connection", ({ receiverId, receiverName }) => {
       // This listens for the "accept_connection" event from the server.
-      // The server must emit it when a receiver accepts a sender’s request, e.g.:
+      // The server must emit it when a receiver accepts a sender's request, e.g.:
       //          socket.to(senderId).emit("accept_connection", {
       //            receiverId: socket.id,
       //            receiverName: someName
@@ -50,20 +45,32 @@ const Send = () => {
       setConnectedReceivers(
         (prev) => new Map(prev).set(receiverId, receiverName)
         // prev = the previous Map stored in state.
-        // new Map(prev) = creates a copy of the old Map (important: React state must be immutable, so we don’t directly mutate prev).
+        // new Map(prev) = creates a copy of the old Map (important: React state must be immutable, so we don't directly mutate prev).
         // .set(receiverId, receiverName) = adds (or updates) one entry in the new Map.
       );
       setConnected(true);
-      setPendingRequests((prev) => Math.max(0, prev - 1));
-      // Decreases the number of pending requests by 1.
-      // Math.max(0, prev - 1) ensures it never goes below 0.
+
+      // Mark this receiver as responded
+      setRespondedReceivers((prev) => new Set(prev).add(receiverId));
+
+      // Only decrease pending requests if this receiver hasn't responded before
+      if (!respondedReceivers.has(receiverId)) {
+        setPendingRequests((prev) => Math.max(0, prev - 1));
+      }
     });
 
     socket.on("reject_connection", ({ receiverId, receiverName }) => {
       console.log(
         `Receiver ${receiverName} (${receiverId}) rejected connection`
       );
-      setPendingRequests((prev) => Math.max(0, prev - 1));
+
+      // Mark this receiver as responded
+      setRespondedReceivers((prev) => new Set(prev).add(receiverId));
+
+      // Only decrease pending requests if this receiver hasn't responded before
+      if (!respondedReceivers.has(receiverId)) {
+        setPendingRequests((prev) => Math.max(0, prev - 1));
+      }
     });
 
     return () => {
@@ -94,6 +101,23 @@ const Send = () => {
     setPendingRequests((prev) => prev + 1);
     setConnectedReceivers(new Map()); // Reset connections
     setConnected(false); // Reset connection state
+    setRespondedReceivers(new Set()); // Reset responded receivers tracking
+    setHasInitiatedConnection(true); // Mark that connection has been initiated
+  };
+
+  const disconnectFromReceivers = () => {
+    // Disconnect from all receivers
+    socket.emit("disconnect_from_receivers", { room });
+    setConnectedReceivers(new Map()); // Clear all connections
+    setConnected(false); // Reset connection state
+    setPendingRequests(0); // Clear pending requests
+    setRespondedReceivers(new Set()); // Reset responded receivers tracking
+    setIsSharingLocation(false); // Stop location sharing if active
+    if (locationInterval) {
+      clearInterval(locationInterval);
+      setLocationInterval(null);
+    }
+    setHasInitiatedConnection(false); // Reset initiated connection state
   };
 
   const startLocationSharing = () => {
@@ -174,18 +198,20 @@ const Send = () => {
         </p>
       </div>
 
-      <button onClick={requestConnect} className="btn bg-blue-500 text-white">
-        Connect to Receivers
+      <button
+        onClick={
+          hasInitiatedConnection ? disconnectFromReceivers : requestConnect
+        }
+        className={`btn ${
+          hasInitiatedConnection
+            ? "bg-red-500 hover:bg-red-600"
+            : "bg-blue-500 hover:bg-blue-600"
+        } text-white`}
+      >
+        {hasInitiatedConnection
+          ? "Disconnect from Receivers"
+          : "Connect to Receivers"}
       </button>
-
-      {/* Connection Status */}
-      {pendingRequests > 0 && (
-        <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-          <p className="text-yellow-800 text-sm">
-            ⏳ Waiting for {pendingRequests} receiver(s) to respond...
-          </p>
-        </div>
-      )}
 
       {/* Connected Receivers Info */}
       {connectedReceivers.size > 0 && (
@@ -246,9 +272,23 @@ const Send = () => {
         <h4 className="font-semibold text-gray-800 mb-2">How it works:</h4>
         <ol className="text-sm text-gray-600 space-y-1 list-decimal list-inside">
           <li>Click "Connect to Receivers" to send connection requests</li>
-          <li>Receivers will see your request and can accept/reject</li>
+          <li>
+            Receivers will see your request and can accept/reject independently
+          </li>
+          <li>
+            If one receiver rejects, others can still accept your connection
+          </li>
           <li>Only accepted receivers will receive your location updates</li>
           <li>You can see exactly which receivers are connected</li>
+          <li>
+            The disconnect button stays active until you manually disconnect
+          </li>
+          <li>
+            Click "Disconnect from Receivers" to end all connections and reset
+          </li>
+          <li>
+            Disconnecting will stop location sharing and reset to initial state
+          </li>
         </ol>
       </div>
     </div>

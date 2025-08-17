@@ -97,7 +97,11 @@ io.on("connection", (socket) => {
     ) {
       const roomConnections = activeConnections.get(room);
       const senderData = roomConnections.get(senderId);
-      senderData.receivers.delete(socket.id);
+
+      // Only remove from receivers if they were previously accepted
+      if (senderData.receivers.has(socket.id)) {
+        senderData.receivers.delete(socket.id);
+      }
 
       // Notify sender that this specific receiver rejected
       socket.to(senderId).emit("reject_connection", {
@@ -110,6 +114,39 @@ io.on("connection", (socket) => {
         )}) rejected connection from sender ${senderId} (${
           senderData.name
         }) in room ${room}`
+      );
+    }
+  });
+
+  // Sender disconnects from all receivers
+  socket.on("disconnect_from_receivers", ({ room }) => {
+    if (
+      activeConnections.has(room) &&
+      activeConnections.get(room).has(socket.id)
+    ) {
+      const roomConnections = activeConnections.get(room);
+      const senderData = roomConnections.get(socket.id);
+
+      // Notify all receivers that sender has disconnected
+      senderData.receivers.forEach((receiverId) => {
+        socket.to(receiverId).emit("sender_disconnected", {
+          senderId: socket.id,
+          senderName: userNames.get(socket.id),
+        });
+      });
+
+      // Remove sender from active connections
+      roomConnections.delete(socket.id);
+
+      // Remove empty rooms
+      if (roomConnections.size === 0) {
+        activeConnections.delete(room);
+      }
+
+      console.log(
+        `Sender ${socket.id} (${userNames.get(
+          socket.id
+        )}) disconnected from all receivers in room ${room}`
       );
     }
   });

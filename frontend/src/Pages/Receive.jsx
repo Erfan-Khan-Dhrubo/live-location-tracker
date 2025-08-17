@@ -144,10 +144,29 @@ const Receive = () => {
       });
     });
 
+    socket.on("sender_disconnected", ({ senderId, senderName }) => {
+      console.log(`Sender ${senderName} disconnected`);
+
+      // Remove sender from connected senders
+      setConnectedSenders((prev) => {
+        const newMap = new Map(prev);
+        newMap.delete(senderId);
+        return newMap;
+      });
+
+      // Remove sender from locations
+      setSenderLocations((prev) => {
+        const newMap = new Map(prev);
+        newMap.delete(senderId);
+        return newMap;
+      });
+    });
+
     return () => {
       socket.off("request_connection");
       socket.off("receive_location");
       socket.off("location_sharing_stopped");
+      socket.off("sender_disconnected");
     };
   }, []);
 
@@ -410,7 +429,9 @@ const Receive = () => {
                             : "bg-gray-100 text-gray-800"
                         }`}
                       >
-                        {data.isSharing ? "🟢 Active" : "⚫ Inactive"}
+                        {data.isSharing
+                          ? "📍 Sharing Location"
+                          : "❌ Not Sharing Location"}
                       </span>
                     </div>
                   </div>
@@ -483,6 +504,10 @@ const Receive = () => {
           </li>
           <li>
             Use "Reset Map View" to return to the overview of all locations
+          </li>
+          <li>
+            Status shows "📍 Sharing Location" when active and "❌ Not Sharing
+            Location" when stopped
           </li>
         </ol>
       </div>
