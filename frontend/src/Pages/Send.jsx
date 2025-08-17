@@ -11,6 +11,8 @@ const Send = () => {
   const [respondedReceivers, setRespondedReceivers] = useState(new Set()); // Track which receivers have responded
   const [hasInitiatedConnection, setHasInitiatedConnection] = useState(false); // Track if sender has initiated connection
   const [myName, setMyName] = useState("");
+  const [messages, setMessages] = useState([]); // Store chat messages
+  const [newMessage, setNewMessage] = useState(""); // Current message input
   const room = "56"; // static room for demo
 
   useEffect(() => {
@@ -73,9 +75,29 @@ const Send = () => {
       }
     });
 
+    // Listen for messages from receivers
+    socket.on(
+      "receive_message",
+      ({ senderId, senderName, message, timestamp }) => {
+        console.log(`Received message from ${senderName}: ${message}`);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: Date.now() + Math.random(),
+            senderId,
+            senderName,
+            message,
+            timestamp,
+            isFromMe: false,
+          },
+        ]);
+      }
+    );
+
     return () => {
       socket.off("accept_connection");
       socket.off("reject_connection");
+      socket.off("receive_message");
       // When the component unmounts(cancel the page), you remove these listeners.
     };
   }, []);
@@ -189,6 +211,43 @@ const Send = () => {
     socket.emit("stop_location_sharing", { room });
   };
 
+  const sendMessage = () => {
+    if (newMessage.trim() && connectedReceivers.size > 0) {
+      const messageData = {
+        message: newMessage.trim(),
+        timestamp: Date.now(),
+        senderId: socket.id,
+        senderName: name,
+      };
+
+      // Add message to local messages
+      setMessages((prev) => [
+        ...prev,
+        {
+          ...messageData,
+          id: Date.now() + Math.random(),
+          isFromMe: true,
+        },
+      ]);
+
+      // Send message to all connected receivers
+      socket.emit("send_message", {
+        room,
+        message: newMessage.trim(),
+        timestamp: Date.now(),
+      });
+
+      setNewMessage(""); // Clear input field
+    }
+  };
+
+  const handleKeyPress = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  };
+
   return (
     <div>
       <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
@@ -267,6 +326,93 @@ const Send = () => {
         </div>
       )}
 
+      {/* Chat Section */}
+      {connected && (
+        <div className="mt-6 p-4 border rounded-lg bg-gray-50">
+          <h3 className="text-lg font-semibold text-gray-800 mb-4">
+            💬 Group Chat with Receivers
+          </h3>
+
+          {/* Group Participants Info */}
+          <div className="mb-3 p-2 bg-blue-50 border border-blue-200 rounded-lg">
+            <p className="text-blue-800 text-xs font-medium mb-1">
+              Group Participants ({connectedReceivers.size + 1} total):
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800">
+                👤 You (Farah)
+              </span>
+              {Array.from(connectedReceivers.entries()).map(
+                ([receiverId, receiverName]) => (
+                  <span
+                    key={receiverId}
+                    className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-green-100 text-green-800"
+                  >
+                    👤 {receiverName}
+                  </span>
+                )
+              )}
+            </div>
+          </div>
+
+          {/* Messages Display */}
+          <div className="mb-4 h-64 overflow-y-auto border rounded-lg bg-white p-3">
+            {messages.length === 0 ? (
+              <p className="text-gray-500 text-center text-sm">
+                No messages yet. Start the group conversation!
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {messages.map((msg) => (
+                  <div
+                    key={msg.id}
+                    className={`flex ${
+                      msg.isFromMe ? "justify-end" : "justify-start"
+                    }`}
+                  >
+                    <div
+                      className={`max-w-xs px-3 py-2 rounded-lg text-sm ${
+                        msg.isFromMe
+                          ? "bg-blue-500 text-white"
+                          : "bg-gray-200 text-gray-800"
+                      }`}
+                    >
+                      <div className="font-medium text-xs mb-1">
+                        {msg.isFromMe ? "You (Farah)" : msg.senderName}
+                      </div>
+                      <div>{msg.message}</div>
+                      <div className="text-xs opacity-75 mt-1">
+                        {new Date(msg.timestamp).toLocaleTimeString()}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Message Input */}
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              onKeyPress={handleKeyPress}
+              placeholder="Type your message to the group..."
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              disabled={connectedReceivers.size === 0}
+            />
+            <button
+              onClick={sendMessage}
+              disabled={!newMessage.trim() || connectedReceivers.size === 0}
+              className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
+            >
+              Send
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Instructions */}
       <div className="mt-6 p-4 bg-gray-50 border rounded-lg">
         <h4 className="font-semibold text-gray-800 mb-2">How it works:</h4>
@@ -289,6 +435,11 @@ const Send = () => {
           <li>
             Disconnecting will stop location sharing and reset to initial state
           </li>
+          <li>After connecting, use the chat to communicate with receivers</li>
+          <li>
+            Multiple receivers can join the group chat and communicate together
+          </li>
+          <li>All participants can see each other's messages in real-time</li>
         </ol>
       </div>
     </div>

@@ -206,6 +206,67 @@ io.on("connection", (socket) => {
     }
   });
 
+  // Handle chat messages
+  socket.on("send_message", ({ room, message, timestamp }) => {
+    console.log(
+      `Message sent in room ${room} by ${socket.id} (${userNames.get(
+        socket.id
+      )}): ${message}`
+    );
+
+    if (
+      activeConnections.has(room) &&
+      activeConnections.get(room).has(socket.id)
+    ) {
+      const senderData = activeConnections.get(room).get(socket.id);
+      const acceptedReceivers = senderData.receivers;
+
+      // Send message to all accepted receivers
+      acceptedReceivers.forEach((receiverId) => {
+        socket.to(receiverId).emit("receive_message", {
+          senderId: socket.id,
+          senderName: userNames.get(socket.id),
+          message,
+          timestamp,
+        });
+      });
+
+      console.log(
+        `Message sent to ${acceptedReceivers.size} accepted receivers`
+      );
+    } else {
+      // This is a receiver sending a message - send to sender and other receivers in the same room
+      const roomConnections = activeConnections.get(room);
+      if (roomConnections) {
+        // Find the sender in this room
+        const senderEntry = Array.from(roomConnections.entries()).find(
+          ([senderId, data]) => data.receivers.has(socket.id)
+        );
+
+        if (senderEntry) {
+          const [senderId, senderData] = senderEntry;
+          const allParticipants = new Set([senderId, ...senderData.receivers]);
+
+          // Send message to all participants except the sender
+          allParticipants.forEach((participantId) => {
+            if (participantId !== socket.id) {
+              socket.to(participantId).emit("receive_message", {
+                senderId: socket.id,
+                senderName: userNames.get(socket.id),
+                message,
+                timestamp,
+              });
+            }
+          });
+
+          console.log(
+            `Group message sent to ${allParticipants.size - 1} participants`
+          );
+        }
+      }
+    }
+  });
+
   socket.on("disconnect", () => {
     const userName = userNames.get(socket.id);
     console.log(`User Disconnected: ${socket.id} (${userName})`);
