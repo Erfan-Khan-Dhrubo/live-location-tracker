@@ -45,25 +45,47 @@ const historyLocationIcon = new L.Icon({
   shadowSize: [32, 32],
 });
 
+// Receiver's own location marker icon
+const myLocationIcon = new L.Icon({
+  iconUrl:
+    "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-violet.png",
+  shadowUrl:
+    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
+  iconSize: [28, 45],
+  iconAnchor: [14, 45],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41],
+});
+
 // Component to handle map updates
-function MapUpdater({ locations, mapRef }) {
+function MapUpdater({ locations, mapRef, myCurrentLocation }) {
   const map = useMap();
   const hasInitialized = useRef(false);
 
   useEffect(() => {
-    if (locations.length > 0 && !hasInitialized.current && map) {
+    if (!hasInitialized.current && map) {
       // Only fit bounds initially when the map first loads
-      const allPositions = locations.flatMap((sender) =>
-        sender.locationHistory.map((loc) => [loc.latitude, loc.longitude])
-      );
+      const allPositions = [
+        ...locations.flatMap((sender) =>
+          sender.locationHistory.map((loc) => [loc.latitude, loc.longitude])
+        ),
+        ...(myCurrentLocation
+          ? [[myCurrentLocation.latitude, myCurrentLocation.longitude]]
+          : []),
+      ];
 
       if (allPositions.length > 0) {
         const bounds = L.latLngBounds(allPositions);
-        map.fitBounds(bounds, { padding: [20, 20] });
+        map.invalidateSize();
+        if (allPositions.length === 1) {
+          map.setView(bounds.getCenter(), 15);
+        } else {
+          map.fitBounds(bounds, { padding: [20, 20] });
+        }
         hasInitialized.current = true;
       }
     }
-  }, [locations, map]);
+  }, [locations, map, myCurrentLocation]);
 
   return null;
 }
@@ -82,6 +104,8 @@ const Receive = () => {
   const [newMessage, setNewMessage] = useState(""); // Current message input
   const [chatCleared, setChatCleared] = useState(false); // Track if chat was cleared
   const mapRef = useRef(null);
+  const [myCurrentLocation, setMyCurrentLocation] = useState(null);
+  const mapLocationWatchIdRef = useRef(null);
 
   // Color palette for different senders
   const senderColors = [
@@ -203,8 +227,36 @@ const Receive = () => {
       socket.off("sender_disconnected");
       socket.off("clear_chat");
       socket.off("receive_message");
+      if (mapLocationWatchIdRef.current !== null && navigator.geolocation) {
+        navigator.geolocation.clearWatch(mapLocationWatchIdRef.current);
+        mapLocationWatchIdRef.current = null;
+      }
     };
   }, []);
+
+  // When map is shown, automatically track receiver's own location locally (no emit)
+  useEffect(() => {
+    if (showMap && "geolocation" in navigator) {
+      const id = navigator.geolocation.watchPosition(
+        (position) => {
+          setMyCurrentLocation({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            timestamp: Date.now(),
+          });
+        },
+        () => {},
+        { enableHighAccuracy: true, maximumAge: 10000, timeout: 10000 }
+      );
+      mapLocationWatchIdRef.current = id;
+      return () => {
+        if (mapLocationWatchIdRef.current !== null) {
+          navigator.geolocation.clearWatch(mapLocationWatchIdRef.current);
+          mapLocationWatchIdRef.current = null;
+        }
+      };
+    }
+  }, [showMap]);
 
   const accept = () => {
     if (currentSenderId) {
@@ -282,12 +334,39 @@ const Receive = () => {
           zoom={2}
           style={{ height: "600px", width: "100%" }}
           className="rounded-lg border-2 border-gray-300"
-          ref={mapRef}
+          whenCreated={(map) => (mapRef.current = map)}
         >
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
+
+          {/* Receiver's own current location */}
+          {myCurrentLocation && (
+            <Marker
+              position={[
+                myCurrentLocation.latitude,
+                myCurrentLocation.longitude,
+              ]}
+              icon={myLocationIcon}
+            >
+              <Popup>
+                <div className="text-center">
+                  <h4 className="font-semibold">📍 You ({name})</h4>
+                  <p className="text-sm">
+                    Lat: {myCurrentLocation.latitude.toFixed(6)}
+                  </p>
+                  <p className="text-sm">
+                    Lng: {myCurrentLocation.longitude.toFixed(6)}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Updated:{" "}
+                    {new Date(myCurrentLocation.timestamp).toLocaleTimeString()}
+                  </p>
+                </div>
+              </Popup>
+            </Marker>
+          )}
 
           {/* Render markers and paths for each sender */}
           {locations.map((sender, index) => {
@@ -322,6 +401,23 @@ const Receive = () => {
                     </div>
                   </Popup>
                 </Marker>
+
+                {/* Line between receiver and sender (Uber-style) */}
+                {myCurrentLocation && (
+                  <Polyline
+                    positions={[
+                      [myCurrentLocation.latitude, myCurrentLocation.longitude],
+                      [
+                        sender.currentLocation.latitude,
+                        sender.currentLocation.longitude,
+                      ],
+                    ]}
+                    color={color}
+                    weight={4}
+                    opacity={0.9}
+                    dashArray="6,6"
+                  />
+                )}
 
                 {/* Location history markers */}
                 {sender.locationHistory.slice(0, -1).map((loc, locIndex) => (
@@ -365,7 +461,11 @@ const Receive = () => {
             );
           })}
 
-          <MapUpdater locations={locations} mapRef={mapRef} />
+          <MapUpdater
+            locations={locations}
+            mapRef={mapRef}
+            myCurrentLocation={myCurrentLocation}
+          />
         </MapContainer>
 
         <div className="mt-3 text-center text-sm text-gray-600">
@@ -534,30 +634,7 @@ const Receive = () => {
             >
               Hide Map
             </button>
-            {showMap && (
-              <button
-                onClick={() => {
-                  if (mapRef.current) {
-                    const map = mapRef.current;
-                    const allPositions = Array.from(
-                      senderLocations.entries()
-                    ).flatMap(([senderId, data]) =>
-                      data.locationHistory.map((loc) => [
-                        loc.latitude,
-                        loc.longitude,
-                      ])
-                    );
-                    if (allPositions.length > 0) {
-                      const bounds = L.latLngBounds(allPositions);
-                      map.fitBounds(bounds, { padding: [20, 20] });
-                    }
-                  }
-                }}
-                className="px-4 py-2 rounded-lg font-medium bg-green-500 text-white hover:bg-green-600"
-              >
-                Reset Map View
-              </button>
-            )}
+            {/* Reset Map View removed */}
           </div>
 
           {showMap && renderLeafletMap()}
