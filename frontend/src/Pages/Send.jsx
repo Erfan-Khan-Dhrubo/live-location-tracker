@@ -13,6 +13,7 @@ const Send = () => {
   const [myName, setMyName] = useState("");
   const [messages, setMessages] = useState([]); // Store chat messages
   const [newMessage, setNewMessage] = useState(""); // Current message input
+  const [chatCleared, setChatCleared] = useState(false); // Track if chat was cleared
   const room = "56"; // static room for demo
 
   useEffect(() => {
@@ -94,10 +95,23 @@ const Send = () => {
       }
     );
 
+    // Listen for chat clear event
+    socket.on("clear_chat", ({ senderId, senderName }) => {
+      console.log(`Clearing chat for sender ${senderName}`);
+      setMessages([]); // Clear all messages
+      setChatCleared(true); // Show notification
+
+      // Hide notification after 3 seconds
+      setTimeout(() => {
+        setChatCleared(false);
+      }, 3000);
+    });
+
     return () => {
       socket.off("accept_connection");
       socket.off("reject_connection");
       socket.off("receive_message");
+      socket.off("clear_chat");
       // When the component unmounts(cancel the page), you remove these listeners.
     };
   }, []);
@@ -140,6 +154,13 @@ const Send = () => {
       setLocationInterval(null);
     }
     setHasInitiatedConnection(false); // Reset initiated connection state
+    setMessages([]); // Clear chat messages
+    setChatCleared(true); // Show notification
+
+    // Hide notification after 3 seconds
+    setTimeout(() => {
+      setChatCleared(false);
+    }, 3000);
   };
 
   const startLocationSharing = () => {
@@ -355,6 +376,15 @@ const Send = () => {
             </div>
           </div>
 
+          {/* Chat Clear Notification */}
+          {chatCleared && (
+            <div className="mb-3 p-2 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <p className="text-yellow-800 text-sm text-center">
+                💬 Chat history cleared. Starting fresh conversation.
+              </p>
+            </div>
+          )}
+
           {/* Messages Display */}
           <div className="mb-4 h-64 overflow-y-auto border rounded-lg bg-white p-3">
             {messages.length === 0 ? (
@@ -399,7 +429,7 @@ const Send = () => {
               onChange={(e) => setNewMessage(e.target.value)}
               onKeyPress={handleKeyPress}
               placeholder="Type your message to the group..."
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black"
               disabled={connectedReceivers.size === 0}
             />
             <button

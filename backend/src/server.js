@@ -133,6 +133,12 @@ io.on("connection", (socket) => {
           senderId: socket.id,
           senderName: userNames.get(socket.id),
         });
+
+        // Clear chat for this receiver
+        socket.to(receiverId).emit("clear_chat", {
+          senderId: socket.id,
+          senderName: userNames.get(socket.id),
+        });
       });
 
       // Remove sender from active connections
@@ -275,7 +281,13 @@ io.on("connection", (socket) => {
     activeConnections.forEach((roomConnections, room) => {
       roomConnections.forEach((senderData, senderId) => {
         if (senderId === socket.id) {
-          // Sender disconnected, remove all their connections
+          // Sender disconnected, remove all their connections and clear chat
+          senderData.receivers.forEach((receiverId) => {
+            socket.to(receiverId).emit("clear_chat", {
+              senderId: socket.id,
+              senderName: userNames.get(socket.id),
+            });
+          });
           roomConnections.delete(senderId);
         } else if (senderData.receivers.has(socket.id)) {
           // Receiver disconnected, remove them from connections

@@ -80,6 +80,7 @@ const Receive = () => {
   const [myName, setMyName] = useState("");
   const [messages, setMessages] = useState([]); // Store chat messages
   const [newMessage, setNewMessage] = useState(""); // Current message input
+  const [chatCleared, setChatCleared] = useState(false); // Track if chat was cleared
   const mapRef = useRef(null);
 
   // Color palette for different senders
@@ -164,6 +165,18 @@ const Receive = () => {
       });
     });
 
+    // Listen for chat clear event when sender disconnects
+    socket.on("clear_chat", ({ senderId, senderName }) => {
+      console.log(`Clearing chat for sender ${senderName}`);
+      setMessages([]); // Clear all messages
+      setChatCleared(true); // Show notification
+
+      // Hide notification after 3 seconds
+      setTimeout(() => {
+        setChatCleared(false);
+      }, 3000);
+    });
+
     // Listen for messages from senders
     socket.on(
       "receive_message",
@@ -188,6 +201,7 @@ const Receive = () => {
       socket.off("receive_location");
       socket.off("location_sharing_stopped");
       socket.off("sender_disconnected");
+      socket.off("clear_chat");
       socket.off("receive_message");
     };
   }, []);
@@ -579,6 +593,15 @@ const Receive = () => {
             </div>
           </div>
 
+          {/* Chat Clear Notification */}
+          {chatCleared && (
+            <div className="mb-3 p-2 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <p className="text-yellow-800 text-sm text-center">
+                💬 Chat history cleared. Starting fresh conversation.
+              </p>
+            </div>
+          )}
+
           {/* Messages Display */}
           <div className="mb-4 h-64 overflow-y-auto border rounded-lg bg-white p-3">
             {messages.length === 0 ? (
@@ -623,7 +646,7 @@ const Receive = () => {
               onChange={(e) => setNewMessage(e.target.value)}
               onKeyPress={handleKeyPress}
               placeholder="Type your message to the group..."
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-black"
               disabled={connectedSenders.size === 0}
             />
             <button
