@@ -1,32 +1,54 @@
 import React, { useState, useEffect } from "react";
 import socket from "../utilities/socket"; // your client-side Socket.IO instance.
+import ConnectBtn from "../components/Sender Components/ConnectBtn";
+import ReceiverInfo from "../components/Sender Components/ReceiverInfo";
+import LocationSharingBtn from "../components/Sender Components/LocationSharingBtn";
+import GroupParticipants from "../components/Sender Components/GroupParticipants";
+import SenderMessageDisplay from "../components/Sender Components/SenderMessageDisplay";
+import SenderMsgInput from "../components/Sender Components/SenderMsgInput";
+import SenderInstruction from "../components/Sender Components/SenderInstruction";
 
 const Send = () => {
   const name = "Farah";
-  const [connected, setConnected] = useState(false);
-  const [isSharingLocation, setIsSharingLocation] = useState(false);
+  const [connected, setConnected] = useState(false); // Track if sender is connected to any receivers (when receiver accept the connection)
+
+  const [isSharingLocation, setIsSharingLocation] = useState(false); // Track if sender is sharing location
+
   const [locationInterval, setLocationInterval] = useState(null);
-  const [connectedReceivers, setConnectedReceivers] = useState(new Map());
-  const [pendingRequests, setPendingRequests] = useState(0);
-  const [respondedReceivers, setRespondedReceivers] = useState(new Set()); // Track which receivers have responded
+  const [connectedReceivers, setConnectedReceivers] = useState(new Map()); // this store all the receivers that are connected to the sender
+  // Map is a built-in JavaScript object (like Array or Set) that stores key → value pairs.
+  // It’s similar to a normal object {}, but has some advantages:
+  // ✅ Keys can be any type (not just strings)
+  // ✅ Keeps the order of insertion
+  // ✅ Provides handy methods (set, get, delete, has)
+  // 📖 Example with Map
+  //      const receivers = new Map();
+  //      receivers.set("user1", { accepted: true, name: "Alice" }); // Add values
+  //      receivers.set("user2", { accepted: false, name: "Bob" });
+  //      console.log(receivers.get("user1")); // Get values  { accepted: true, name: "Alice" }
+  //      console.log(receivers.has("user2")); // Check if key exists
+
   const [hasInitiatedConnection, setHasInitiatedConnection] = useState(false); // Track if sender has initiated connection
+  // Tracks whether the sender has clicked the "Connect to Receivers" button at all.
+  // It doesn’t care yet if any receivers accepted.
+
   const [myName, setMyName] = useState("");
-  const [messages, setMessages] = useState([]); // Store chat messages
+  const [messages, setMessages] = useState([]); // Store chat messages (chat history array)
+
   const [newMessage, setNewMessage] = useState(""); // Current message input
-  const [chatCleared, setChatCleared] = useState(false); // Track if chat was cleared
+  const [chatCleared, setChatCleared] = useState(false); // Track if chat was cleared (use for notification)
+
   const room = "56"; // static room for demo
 
   useEffect(() => {
     // Join the room when component mounts
-    socket.emit("join_room", room);
-    // Send my name to the server
-    socket.emit("set_name", name);
-    // "join_room" is the event name. Your server should be listening for it:
+    socket.emit("join_room", room); // "join_room"(built-in event)
     //  room is the payload (in this case, the string "56" from your component).
     // By doing this, your socket (the client) tells the server: “I want to join the chat room with ID 56.”
     // So now, the server can send messages only to people inside that room.
 
-    // Get my name from socket
+    socket.emit("set_name", name); // Send my name to the server so that the receiver can see my name
+
     socket.on("connect", () => {
       // This listens for the built-in "connect" event from Socket.IO.
       // "connect" fires when the client successfully connects to the server.
@@ -52,28 +74,12 @@ const Send = () => {
         // .set(receiverId, receiverName) = adds (or updates) one entry in the new Map.
       );
       setConnected(true);
-
-      // Mark this receiver as responded
-      setRespondedReceivers((prev) => new Set(prev).add(receiverId));
-
-      // Only decrease pending requests if this receiver hasn't responded before
-      if (!respondedReceivers.has(receiverId)) {
-        setPendingRequests((prev) => Math.max(0, prev - 1));
-      }
     });
 
     socket.on("reject_connection", ({ receiverId, receiverName }) => {
       console.log(
         `Receiver ${receiverName} (${receiverId}) rejected connection`
       );
-
-      // Mark this receiver as responded
-      setRespondedReceivers((prev) => new Set(prev).add(receiverId));
-
-      // Only decrease pending requests if this receiver hasn't responded before
-      if (!respondedReceivers.has(receiverId)) {
-        setPendingRequests((prev) => Math.max(0, prev - 1));
-      }
     });
 
     // Listen for messages from receivers
@@ -82,14 +88,15 @@ const Send = () => {
       ({ senderId, senderName, message, timestamp }) => {
         console.log(`Received message from ${senderName}: ${message}`);
         setMessages((prev) => [
+          //setMessages updates your messages state (chat history array).
           ...prev,
           {
-            id: Date.now() + Math.random(),
-            senderId,
-            senderName,
-            message,
-            timestamp,
-            isFromMe: false,
+            id: Date.now() + Math.random(), // unique id (Date.now + random)
+            senderId, // id of the sender
+            senderName, // name of the sender
+            message, // message content
+            timestamp, // timestamp of the message
+            isFromMe: false, // false means the message is from the receiver
           },
         ]);
       }
@@ -99,12 +106,6 @@ const Send = () => {
     socket.on("clear_chat", ({ senderId, senderName }) => {
       console.log(`Clearing chat for sender ${senderName}`);
       setMessages([]); // Clear all messages
-      setChatCleared(true); // Show notification
-
-      // Hide notification after 3 seconds
-      setTimeout(() => {
-        setChatCleared(false);
-      }, 3000);
     });
 
     return () => {
@@ -134,10 +135,8 @@ const Send = () => {
   const requestConnect = () => {
     // when Connect to Receivers button is pressed it send request connection to the server
     socket.emit("request_connection", { room });
-    setPendingRequests((prev) => prev + 1);
     setConnectedReceivers(new Map()); // Reset connections
     setConnected(false); // Reset connection state
-    setRespondedReceivers(new Set()); // Reset responded receivers tracking
     setHasInitiatedConnection(true); // Mark that connection has been initiated
   };
 
@@ -146,8 +145,6 @@ const Send = () => {
     socket.emit("disconnect_from_receivers", { room });
     setConnectedReceivers(new Map()); // Clear all connections
     setConnected(false); // Reset connection state
-    setPendingRequests(0); // Clear pending requests
-    setRespondedReceivers(new Set()); // Reset responded receivers tracking
     setIsSharingLocation(false); // Stop location sharing if active
     if (locationInterval) {
       clearInterval(locationInterval);
@@ -155,12 +152,6 @@ const Send = () => {
     }
     setHasInitiatedConnection(false); // Reset initiated connection state
     setMessages([]); // Clear chat messages
-    setChatCleared(true); // Show notification
-
-    // Hide notification after 3 seconds
-    setTimeout(() => {
-      setChatCleared(false);
-    }, 3000);
   };
 
   const startLocationSharing = () => {
@@ -199,6 +190,9 @@ const Send = () => {
 
       // Set up continuous location tracking
       const interval = setInterval(() => {
+        // setInterval(() => {...}, 5000)
+        // → Runs the code every 5000 milliseconds (5 seconds) until you stop it.
+
         console.log("Getting updated position...");
         navigator.geolocation.getCurrentPosition(
           (position) => {
@@ -217,6 +211,10 @@ const Send = () => {
       }, 5000); // Update every 5 seconds
 
       setLocationInterval(interval);
+      // setInterval starts a repeating task, but it keeps running indefinitely until you manually stop it.
+      // interval is the ID (e.g., 3, 4, 5, …).
+      // To stop it, you must call:
+      // clearInterval(interval);
     } else {
       alert("Geolocation is not supported by this browser.");
     }
@@ -237,6 +235,13 @@ const Send = () => {
       const messageData = {
         message: newMessage.trim(),
         timestamp: Date.now(),
+        // Date.now() is a built-in JavaScript function.
+        // It returns the current time in milliseconds since January 1, 1970, 00:00:00 UTC (this is called the Unix epoch).
+        // console.log(Date.now());
+        // Output might be: 1734633729123
+        // This is a number, not a Date object.
+        // You can convert it into a readable format later if needed.
+
         senderId: socket.id,
         senderName: name,
       };
@@ -262,215 +267,71 @@ const Send = () => {
     }
   };
 
-  const handleKeyPress = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
-  };
-
   return (
-    <div>
-      <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-        <h3 className="text-blue-800 font-semibold mb-2">📍 Location Sender</h3>
-        <p className="text-blue-600 text-sm">
-          Share your location with receivers in the room
-        </p>
-      </div>
-
-      <button
-        onClick={
-          hasInitiatedConnection ? disconnectFromReceivers : requestConnect
-        }
-        className={`btn ${
-          hasInitiatedConnection
-            ? "bg-red-500 hover:bg-red-600"
-            : "bg-blue-500 hover:bg-blue-600"
-        } text-white`}
-      >
-        {hasInitiatedConnection
-          ? "Disconnect from Receivers"
-          : "Connect to Receivers"}
-      </button>
-
-      {/* Connected Receivers Info */}
-      {connectedReceivers.size > 0 && (
-        <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
-          <p className="text-green-800 text-sm font-medium mb-2">
-            ✅ Connected to {connectedReceivers.size} receiver(s):
-          </p>
-          <div className="space-y-1">
-            {Array.from(connectedReceivers.entries()).map(
-              ([receiverId, receiverName]) => (
-                <div
-                  key={receiverId}
-                  className="flex items-center gap-2 text-green-700 text-sm"
-                >
-                  <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                  <span>{receiverName}</span>
-                  <span className="text-xs text-green-500">
-                    ({receiverId.slice(0, 8)}...)
-                  </span>
-                </div>
-              )
-            )}
-          </div>
-        </div>
-      )}
-
-      {connected && (
-        <div className="mt-4 space-y-4">
-          <div className="flex gap-2">
-            {!isSharingLocation ? (
-              <button
-                onClick={startLocationSharing}
-                className="btn bg-green-500 text-white"
-              >
-                Start Sharing Location
-              </button>
-            ) : (
-              <button
-                onClick={stopLocationSharing}
-                className="btn bg-red-500 text-white"
-              >
-                Stop Sharing Location
-              </button>
-            )}
-          </div>
-
-          {isSharingLocation && (
-            <div className="text-sm text-green-600">
-              📍 Sharing location every 5 seconds with {connectedReceivers.size}{" "}
-              receiver(s)...
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Chat Section */}
-      {connected && (
-        <div className="mt-6 p-4 border rounded-lg bg-gray-50">
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">
-            💬 Group Chat with Receivers
-          </h3>
-
-          {/* Group Participants Info */}
-          <div className="mb-3 p-2 bg-blue-50 border border-blue-200 rounded-lg">
-            <p className="text-blue-800 text-xs font-medium mb-1">
-              Group Participants ({connectedReceivers.size + 1} total):
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800">
-                👤 You (Farah)
-              </span>
-              {Array.from(connectedReceivers.entries()).map(
-                ([receiverId, receiverName]) => (
-                  <span
-                    key={receiverId}
-                    className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-green-100 text-green-800"
-                  >
-                    👤 {receiverName}
-                  </span>
-                )
-              )}
-            </div>
-          </div>
-
-          {/* Chat Clear Notification */}
-          {chatCleared && (
-            <div className="mb-3 p-2 bg-yellow-50 border border-yellow-200 rounded-lg">
-              <p className="text-yellow-800 text-sm text-center">
-                💬 Chat history cleared. Starting fresh conversation.
+    <div className="min-h-screen bg-blue-50">
+      <div className="w-9/10 mx-auto py-12">
+        <div className="flex flex-col md:flex-row gap-8">
+          <div className="flex-1">
+            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg ">
+              <h3 className="text-blue-800 font-semibold mb-2">
+                📍 Location Sender
+              </h3>
+              <p className="text-blue-600 text-sm">
+                Share your location with receivers in the room
               </p>
             </div>
-          )}
 
-          {/* Messages Display */}
-          <div className="mb-4 h-64 overflow-y-auto border rounded-lg bg-white p-3">
-            {messages.length === 0 ? (
-              <p className="text-gray-500 text-center text-sm">
-                No messages yet. Start the group conversation!
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {messages.map((msg) => (
-                  <div
-                    key={msg.id}
-                    className={`flex ${
-                      msg.isFromMe ? "justify-end" : "justify-start"
-                    }`}
-                  >
-                    <div
-                      className={`max-w-xs px-3 py-2 rounded-lg text-sm ${
-                        msg.isFromMe
-                          ? "bg-blue-500 text-white"
-                          : "bg-gray-200 text-gray-800"
-                      }`}
-                    >
-                      <div className="font-medium text-xs mb-1">
-                        {msg.isFromMe ? "You (Farah)" : msg.senderName}
-                      </div>
-                      <div>{msg.message}</div>
-                      <div className="text-xs opacity-75 mt-1">
-                        {new Date(msg.timestamp).toLocaleTimeString()}
-                      </div>
-                    </div>
-                  </div>
-                ))}
+            {/* Connect to Receivers Button */}
+            <ConnectBtn
+              hasInitiatedConnection={hasInitiatedConnection}
+              disconnectFromReceivers={disconnectFromReceivers}
+              requestConnect={requestConnect}
+            ></ConnectBtn>
+
+            {/* Connected Receivers Info */}
+            <ReceiverInfo
+              connectedReceivers={connectedReceivers}
+            ></ReceiverInfo>
+
+            {/* Location Sharing Button */}
+            <LocationSharingBtn
+              connected={connected}
+              isSharingLocation={isSharingLocation}
+              connectedReceivers={connectedReceivers}
+              startLocationSharing={startLocationSharing}
+              stopLocationSharing={stopLocationSharing}
+            ></LocationSharingBtn>
+
+            {/* Chat Section */}
+            {connected && (
+              <div className="mt-6 p-4 border rounded-lg bg-gray-50">
+                <h3 className="text-lg font-semibold text-gray-800 mb-4">
+                  💬 Group Chat with Receivers
+                </h3>
+
+                {/* Group Participants Info */}
+                <GroupParticipants
+                  connectedReceivers={connectedReceivers}
+                ></GroupParticipants>
+
+                {/* Messages Display */}
+                <SenderMessageDisplay
+                  messages={messages}
+                ></SenderMessageDisplay>
+
+                {/* Message Input */}
+                <SenderMsgInput
+                  newMessage={newMessage}
+                  setNewMessage={setNewMessage}
+                  connectedReceivers={connectedReceivers}
+                  sendMessage={sendMessage}
+                ></SenderMsgInput>
               </div>
             )}
           </div>
-
-          {/* Message Input */}
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder="Type your message to the group..."
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black"
-              disabled={connectedReceivers.size === 0}
-            />
-            <button
-              onClick={sendMessage}
-              disabled={!newMessage.trim() || connectedReceivers.size === 0}
-              className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
-            >
-              Send
-            </button>
-          </div>
+          {/* Instructions */}
+          <SenderInstruction></SenderInstruction>
         </div>
-      )}
-
-      {/* Instructions */}
-      <div className="mt-6 p-4 bg-gray-50 border rounded-lg">
-        <h4 className="font-semibold text-gray-800 mb-2">How it works:</h4>
-        <ol className="text-sm text-gray-600 space-y-1 list-decimal list-inside">
-          <li>Click "Connect to Receivers" to send connection requests</li>
-          <li>
-            Receivers will see your request and can accept/reject independently
-          </li>
-          <li>
-            If one receiver rejects, others can still accept your connection
-          </li>
-          <li>Only accepted receivers will receive your location updates</li>
-          <li>You can see exactly which receivers are connected</li>
-          <li>
-            The disconnect button stays active until you manually disconnect
-          </li>
-          <li>
-            Click "Disconnect from Receivers" to end all connections and reset
-          </li>
-          <li>
-            Disconnecting will stop location sharing and reset to initial state
-          </li>
-          <li>After connecting, use the chat to communicate with receivers</li>
-          <li>
-            Multiple receivers can join the group chat and communicate together
-          </li>
-          <li>All participants can see each other's messages in real-time</li>
-        </ol>
       </div>
     </div>
   );
