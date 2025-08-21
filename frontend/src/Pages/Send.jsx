@@ -268,7 +268,7 @@ const Send = () => {
   };
 
   return (
-    <div className="min-h-screen bg-blue-50">
+    <div className="w-full bg-blue-50">
       <div className="w-9/10 mx-auto py-12">
         <div className="flex flex-col md:flex-row gap-8">
           <div className="flex-1">
