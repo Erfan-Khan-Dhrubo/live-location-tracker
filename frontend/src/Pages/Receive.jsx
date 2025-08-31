@@ -11,13 +11,18 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import socket from "../utilities/socket";
 
-// Fix for default markers in Leaflet
+// Remove Leaflet's default method of finding marker image URLs
+// (because in React/Vite/Webpack builds, the default local image path breaks)
 delete L.Icon.Default.prototype._getIconUrl;
+// Override Leaflet's default marker options with custom URLs (from CDN)
 L.Icon.Default.mergeOptions({
+  // High-resolution icon for Retina/HiDPI screens
   iconRetinaUrl:
     "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png",
+  // Standard marker icon
   iconUrl:
     "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png",
+  // Shadow image that appears under the marker
   shadowUrl:
     "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
 });
@@ -59,8 +64,8 @@ const myLocationIcon = new L.Icon({
 
 // Component to handle map updates
 function MapUpdater({ locations, mapRef, myCurrentLocation }) {
-  const map = useMap();
-  const hasInitialized = useRef(false);
+  const map = useMap(); // comes from react-leaflet, gives you the Leaflet map object
+  const hasInitialized = useRef(false); // ^
 
   useEffect(() => {
     if (!hasInitialized.current && map) {
