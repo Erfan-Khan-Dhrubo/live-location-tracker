@@ -10,6 +10,7 @@ import {
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import socket from "../utilities/socket";
+import SenderInfo from "../components/Receiver Components/SenderInfo";
 
 // Remove Leaflet's default method of finding marker image URLs
 // (because in React/Vite/Webpack builds, the default local image path breaks)
@@ -38,17 +39,6 @@ const createSenderIcon = (color) =>
     popupAnchor: [1, -34],
     shadowSize: [41, 41],
   });
-
-const historyLocationIcon = new L.Icon({
-  iconUrl:
-    "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png",
-  shadowUrl:
-    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
-  iconSize: [20, 32],
-  iconAnchor: [10, 32],
-  popupAnchor: [1, -34],
-  shadowSize: [32, 32],
-});
 
 // Receiver's own location marker icon
 const myLocationIcon = new L.Icon({
@@ -96,22 +86,82 @@ function MapUpdater({ locations, mapRef, myCurrentLocation }) {
 }
 
 const Receive = () => {
-  const name = "Erfan";
-  const room = "56";
-  const [connectionRequest, setConnectionRequest] = useState(false);
-  const [currentSenderId, setCurrentSenderId] = useState(null);
-  const [currentSenderName, setCurrentSenderName] = useState("");
-  const [showMap, setShowMap] = useState(false);
-  const [connectedSenders, setConnectedSenders] = useState(new Map()); // senderId -> senderName
-  const [senderLocations, setSenderLocations] = useState(new Map()); // senderId -> { currentLocation, locationHistory, isSharing }
-  const [myName, setMyName] = useState("");
-  const [messages, setMessages] = useState([]); // Store chat messages
-  const [newMessage, setNewMessage] = useState(""); // Current message input
-  const [chatCleared, setChatCleared] = useState(false); // Track if chat was cleared
-  const mapRef = useRef(null);
-  const [myCurrentLocation, setMyCurrentLocation] = useState(null);
-  const mapLocationWatchIdRef = useRef(null);
+  // const name = "Erfan";
+  // const room = "56";
+  // const [connectionRequest, setConnectionRequest] = useState(false);
+  // const [currentSenderId, setCurrentSenderId] = useState(null);
+  // const [currentSenderName, setCurrentSenderName] = useState("");
+  // const [showMap, setShowMap] = useState(false);
+  // const [connectedSenders, setConnectedSenders] = useState(new Map()); // senderId -> senderName
+  // // Map is a built-in JavaScript object (like Array or Set) that stores key → value pairs.
+  // // It’s similar to a normal object {}, but has some advantages:
+  // // ✅ Keys can be any type (not just strings)
+  // // ✅ Keeps the order of insertion
+  // // ✅ Provides handy methods (set, get, delete, has)
+  // // 📖 Example with Map
+  // //      const receivers = new Map();
+  // //      receivers.set("user1", { accepted: true, name: "Alice" }); // Add values
+  // //      receivers.set("user2", { accepted: false, name: "Bob" });
+  // //      console.log(receivers.get("user1")); // Get values  { accepted: true, name: "Alice" }
+  // //      console.log(receivers.has("user2")); // Check if key exists
 
+  // const [senderLocations, setSenderLocations] = useState(new Map()); // senderId -> { currentLocation, locationHistory, isSharing }
+  // const [myName, setMyName] = useState("");
+  // const [messages, setMessages] = useState([]); // Store chat messages
+  // const [newMessage, setNewMessage] = useState(""); // Current message input
+  // const [chatCleared, setChatCleared] = useState(false); // Track if chat was cleared
+  // const mapRef = useRef(null);
+  // const [myCurrentLocation, setMyCurrentLocation] = useState(null);
+  // const mapLocationWatchIdRef = useRef(null);
+
+  // Your fixed name (could be the person using this client)
+  const name = "Erfan";
+
+  // A fixed room number (used to group people together in the app)
+  const room = "56";
+
+  // React state to track whether a new connection request has arrived
+  const [connectionRequest, setConnectionRequest] = useState(false);
+
+  // React state to store the ID of the sender who requested connection
+  const [currentSenderId, setCurrentSenderId] = useState(null);
+
+  // React state to store the name of the sender who requested connection
+  const [currentSenderName, setCurrentSenderName] = useState("");
+
+  // React state to control whether the map is visible
+  const [showMap, setShowMap] = useState(false);
+  // React state to keep track of all connected senders (users who connected to you)
+  // We use a Map because:
+  //   - Keys can be anything (not just strings)
+  //   - Maintains insertion order
+  //   - Has built-in methods like set(), get(), delete(), has()
+  // Example: connectedSenders.set("user123", "Alice");
+  const [connectedSenders, setConnectedSenders] = useState(new Map());
+  // React state to keep track of sender locations
+  // Map where key = senderId, value = { currentLocation, locationHistory, isSharing }
+  //   - currentLocation → { latitude, longitude }
+  //   - locationHistory → array of past { latitude, longitude }
+  //   - isSharing → boolean, whether sender is actively sharing location
+  const [senderLocations, setSenderLocations] = useState(new Map());
+
+  // React state to store your own name (can be updated by input field)
+  const [myName, setMyName] = useState("");
+  // React state to keep a list of chat messages (array of objects or strings)
+  const [messages, setMessages] = useState([]);
+  // React state for the text input of the current message being typed
+  const [newMessage, setNewMessage] = useState("");
+  // React state to track if the chat was cleared (so UI can reset accordingly)
+  const [chatCleared, setChatCleared] = useState(false);
+  // useRef to store reference to the map instance (so you can interact with it directly without re-rendering)
+  const mapRef = useRef(null);
+
+  // React state to store your current location { latitude, longitude }
+  const [myCurrentLocation, setMyCurrentLocation] = useState(null);
+
+  // useRef to store the ID returned by navigator.geolocation.watchPosition()
+  // This allows you to stop watching later with navigator.geolocation.clearWatch()
+  const mapLocationWatchIdRef = useRef(null);
   // Color palette for different senders
   const senderColors = [
     "red",
@@ -126,7 +176,7 @@ const Receive = () => {
 
   useEffect(() => {
     socket.emit("join_room", room);
-    // Send my name to the server
+    // Send my name to the server !
     socket.emit("set_name", name);
 
     socket.on("request_connection", ({ senderId, senderName }) => {
@@ -138,11 +188,12 @@ const Receive = () => {
       setCurrentSenderName(senderName);
     });
 
-    // Location sharing events
+    // Location sharing events !
     socket.on("receive_location", ({ location, senderId, senderName }) => {
       console.log(`Received location from ${senderName}:`, location);
 
       setSenderLocations((prev) => {
+        // Updating setSenderLocations
         const newMap = new Map(prev);
         const senderData = newMap.get(senderId) || {
           currentLocation: null,
@@ -160,6 +211,7 @@ const Receive = () => {
       });
     });
 
+    // Location sharing stopped event !
     socket.on("location_sharing_stopped", ({ senderId, senderName }) => {
       console.log(`Location sharing stopped by ${senderName}`);
 
@@ -176,6 +228,7 @@ const Receive = () => {
       });
     });
 
+    // Location Disconnect Event !
     socket.on("sender_disconnected", ({ senderId, senderName }) => {
       console.log(`Sender ${senderName} disconnected`);
 
@@ -194,19 +247,14 @@ const Receive = () => {
       });
     });
 
-    // Listen for chat clear event when sender disconnects
+    // Listen for chat clear event when sender disconnects !
     socket.on("clear_chat", ({ senderId, senderName }) => {
       console.log(`Clearing chat for sender ${senderName}`);
       setMessages([]); // Clear all messages
       setChatCleared(true); // Show notification
-
-      // Hide notification after 3 seconds
-      setTimeout(() => {
-        setChatCleared(false);
-      }, 3000);
     });
 
-    // Listen for messages from senders
+    // Listen for messages from senders !
     socket.on(
       "receive_message",
       ({ senderId, senderName, message, timestamp }) => {
@@ -233,7 +281,7 @@ const Receive = () => {
       socket.off("clear_chat");
       socket.off("receive_message");
       if (mapLocationWatchIdRef.current !== null && navigator.geolocation) {
-        navigator.geolocation.clearWatch(mapLocationWatchIdRef.current);
+        navigator.geolocation.clearWatch(mapLocationWatchIdRef.current); // ?
         mapLocationWatchIdRef.current = null;
       }
     };
@@ -242,22 +290,40 @@ const Receive = () => {
   // When map is shown, automatically track receiver's own location locally (no emit)
   useEffect(() => {
     if (showMap && "geolocation" in navigator) {
+      // The map is visible and The map is visible, and
       const id = navigator.geolocation.watchPosition(
+        // navigator.geolocation.watchPosition(success, error, options)
+        // Starts continuous tracking of the user’s device location.
+        // Unlike getCurrentPosition (which runs once), watchPosition keeps updating whenever location changes.
         (position) => {
+          // success callback → called every time location updates.
           setMyCurrentLocation({
             latitude: position.coords.latitude,
             longitude: position.coords.longitude,
             timestamp: Date.now(),
           });
         },
-        () => {},
+        () => {}, // error callback → called if tracking fails (here it’s empty () => {}).
         { enableHighAccuracy: true, maximumAge: 10000, timeout: 10000 }
+        // options:
+        // enableHighAccuracy: true → use GPS if available (better accuracy, more battery).
+        // maximumAge: 10000 → allow cached location up to 10s old.
+        // timeout: 10000 → wait max 10s for a location before failing.
       );
-      mapLocationWatchIdRef.current = id;
+      mapLocationWatchIdRef.current = id; // Stores that ID in a useRef, so we can later stop tracking with clearWatch(id).
+      // When you call navigator.geolocation.watchPosition(...), the browser starts continuously tracking your location.
+      // That function returns an ID number (like id = 12) which identifies that specific tracking session.
+      // To stop tracking later, you must call:
+      //        navigator.geolocation.clearWatch(id);
+
       return () => {
+        // Cleanup function (return () => { ... })
+        // React automatically runs this when:
+        // showMap changes from true → false
+        // OR the component unmounts.
         if (mapLocationWatchIdRef.current !== null) {
-          navigator.geolocation.clearWatch(mapLocationWatchIdRef.current);
-          mapLocationWatchIdRef.current = null;
+          navigator.geolocation.clearWatch(mapLocationWatchIdRef.current); // Stops the GPS tracking
+          mapLocationWatchIdRef.current = null; // Resets the ref to null (so a new session can start cleanly).
         }
       };
     }
@@ -334,13 +400,14 @@ const Receive = () => {
 
     return (
       <div className="mt-4">
-        <MapContainer
-          center={[0, 0]}
-          zoom={2}
+        <MapContainer // MapContainer: The main Leaflet map component from react-leaflet.
+          center={[0, 0]} // Initial center of the map (latitude 0, longitude 0 → near the Atlantic ocean).
+          zoom={2} // Initial zoom level (world view).
           style={{ height: "600px", width: "100%" }}
           className="rounded-lg border-2 border-gray-300"
-          whenCreated={(map) => (mapRef.current = map)}
+          whenCreated={(map) => (mapRef.current = map)} // When the map is created, store a reference to the actual Leaflet map object in mapRef.
         >
+          {/* The TileLayer component in Leaflet is used to display the map imagery/tiles. */}
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -348,13 +415,15 @@ const Receive = () => {
 
           {/* Receiver's own current location */}
           {myCurrentLocation && (
-            <Marker
+            <Marker // Marker → Leaflet component to show a pin on the map.
               position={[
                 myCurrentLocation.latitude,
                 myCurrentLocation.longitude,
               ]}
               icon={myLocationIcon}
+              // Uses your custom violet icon (so your marker looks different from senders).
             >
+              {/* A small info box that shows up when you click the marker. */}
               <Popup>
                 <div className="text-center">
                   <h4 className="font-semibold">📍 You ({name})</h4>
@@ -375,7 +444,7 @@ const Receive = () => {
 
           {/* Render markers and paths for each sender */}
           {locations.map((sender, index) => {
-            if (!sender.currentLocation) return null;
+            if (!sender.currentLocation) return null; // Skip this sender if they don’t have a current location yet.
 
             const color = senderColors[index % senderColors.length];
             const senderIcon = createSenderIcon(color);
@@ -409,7 +478,7 @@ const Receive = () => {
 
                 {/* Line between receiver and sender (Uber-style) */}
                 {myCurrentLocation && (
-                  <Polyline
+                  <Polyline // Polyline → Leaflet component to show a line on the map.
                     positions={[
                       [myCurrentLocation.latitude, myCurrentLocation.longitude],
                       [
@@ -418,48 +487,9 @@ const Receive = () => {
                       ],
                     ]}
                     color={color}
-                    weight={4}
+                    weight={4} // (line thickness
                     opacity={0.9}
-                    dashArray="6,6"
-                  />
-                )}
-
-                {/* Location history markers */}
-                {sender.locationHistory.slice(0, -1).map((loc, locIndex) => (
-                  <Marker
-                    key={`${sender.senderId}-${locIndex}`}
-                    position={[loc.latitude, loc.longitude]}
-                    icon={historyLocationIcon}
-                  >
-                    <Popup>
-                      <div className="text-center">
-                        <h4 className="font-semibold">
-                          📍 {sender.senderName} - Location #{locIndex + 1}
-                        </h4>
-                        <p className="text-sm">
-                          Lat: {loc.latitude.toFixed(6)}
-                        </p>
-                        <p className="text-sm">
-                          Lng: {loc.longitude.toFixed(6)}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          Time: {new Date(loc.timestamp).toLocaleTimeString()}
-                        </p>
-                      </div>
-                    </Popup>
-                  </Marker>
-                ))}
-
-                {/* Tracking path polyline */}
-                {sender.locationHistory.length > 1 && (
-                  <Polyline
-                    positions={sender.locationHistory.map((loc) => [
-                      loc.latitude,
-                      loc.longitude,
-                    ])}
-                    color={color}
-                    weight={3}
-                    opacity={0.7}
+                    dashArray="6,6" // Alternating dash and gap pattern (6 pixels dash, 6 pixels gap). (dotted effect)
                   />
                 )}
               </div>
@@ -488,288 +518,273 @@ const Receive = () => {
   };
 
   return (
-    <div>
-      <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
-        <h3 className="text-green-800 font-semibold mb-2">
-          📍 Location Receiver
-        </h3>
-        <p className="text-green-600 text-sm">
-          Receive and view location updates from multiple senders
-        </p>
-      </div>
-
-      {/* Connection Status */}
-      {connectedSenders.size > 0 && (
+    <div className="w-full bg-blue-50">
+      <div className="w-9/10 mx-auto py-12">
         <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
-          <p className="text-green-800 text-sm font-medium mb-2">
-            ✅ Connected to {connectedSenders.size} sender(s):
-          </p>
-          <div className="space-y-1">
-            {Array.from(connectedSenders.entries()).map(
-              ([senderId, senderName]) => (
-                <div
-                  key={senderId}
-                  className="flex items-center gap-2 text-green-700 text-sm"
-                >
-                  <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                  <span>{senderName}</span>
-                  <span className="text-xs text-green-500">
-                    ({senderId.slice(0, 8)}...)
-                  </span>
-                </div>
-              )
-            )}
-          </div>
-        </div>
-      )}
-
-      {connectionRequest && (
-        <div className="bg-blue-50 p-4 rounded-lg border border-blue-200 mb-4">
-          <p className="text-blue-800 font-medium mb-3">
-            📍 Location Sharing Request
-          </p>
-          <p className="text-blue-600 text-sm mb-3">
-            <strong>{currentSenderName}</strong> wants to share their location
-            with you.
-          </p>
-          <div className="flex gap-2">
-            <button
-              onClick={accept}
-              className="btn bg-green-500 text-white hover:bg-green-600"
-            >
-              Accept
-            </button>
-            <button
-              onClick={reject}
-              className="btn bg-red-500 text-white hover:bg-red-600"
-            >
-              Reject
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Active Senders Overview */}
-      {senderLocations.size > 0 && (
-        <div className="mt-6 p-6 border rounded-lg bg-gray-50">
-          <h3 className="text-xl font-semibold mb-4">
-            📍 Active Location Senders
+          <h3 className="text-green-800 font-semibold mb-2">
+            📍 Location Receiver
           </h3>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
-            {Array.from(senderLocations.entries()).map(
-              ([senderId, data], index) => {
-                const senderName = connectedSenders.get(senderId) || "Unknown";
-                const color = senderColors[index % senderColors.length];
-
-                return (
-                  <div
-                    key={senderId}
-                    className="p-4 bg-white rounded-lg border"
-                  >
-                    <div className="flex items-center gap-2 mb-2">
-                      <div
-                        className="w-4 h-4 rounded-full"
-                        style={{ backgroundColor: color }}
-                      ></div>
-                      <h4 className="font-semibold text-gray-800">
-                        {senderName}
-                      </h4>
-                    </div>
-
-                    {data.currentLocation && (
-                      <div className="space-y-1 text-sm">
-                        <p className="text-gray-600">
-                          <strong>Lat:</strong>{" "}
-                          {data.currentLocation.latitude.toFixed(6)}
-                        </p>
-                        <p className="text-gray-600">
-                          <strong>Lng:</strong>{" "}
-                          {data.currentLocation.longitude.toFixed(6)}
-                        </p>
-                        <p className="text-gray-500">
-                          <strong>Updated:</strong>{" "}
-                          {new Date(
-                            data.currentLocation.timestamp
-                          ).toLocaleTimeString()}
-                        </p>
-                        <p className="text-gray-500">
-                          <strong>Points:</strong> {data.locationHistory.length}
-                        </p>
-                      </div>
-                    )}
-
-                    <div className="mt-2">
-                      <span
-                        className={`inline-block px-2 py-1 rounded-full text-xs ${
-                          data.isSharing
-                            ? "bg-green-100 text-green-800"
-                            : "bg-gray-100 text-gray-800"
-                        }`}
-                      >
-                        {data.isSharing
-                          ? "📍 Sharing Location"
-                          : "❌ Not Sharing Location"}
-                      </span>
-                    </div>
-                  </div>
-                );
-              }
-            )}
-          </div>
-
-          <div className="flex gap-3 mb-4">
-            <button
-              onClick={() => setShowMap(true)}
-              className={`px-4 py-2 rounded-lg font-medium ${
-                showMap
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-              }`}
-            >
-              View Map
-            </button>
-            <button
-              onClick={() => setShowMap(false)}
-              className={`px-4 py-2 rounded-lg font-medium ${
-                !showMap
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-              }`}
-            >
-              Hide Map
-            </button>
-            {/* Reset Map View removed */}
-          </div>
-
-          {showMap && renderLeafletMap()}
+          <p className="text-green-600 text-sm">
+            Receive and view location updates from multiple senders
+          </p>
         </div>
-      )}
 
-      {/* Chat Section */}
-      {connectedSenders.size > 0 && (
-        <div className="mt-6 p-4 border rounded-lg bg-gray-50">
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">
-            💬 Group Chat with Senders
-          </h3>
+        <SenderInfo connectedSenders={connectedSenders}></SenderInfo>
 
-          {/* Group Participants Info */}
-          <div className="mb-3 p-2 bg-green-50 border border-green-200 rounded-lg">
-            <p className="text-green-800 text-xs font-medium mb-1">
-              Group Participants ({connectedSenders.size + 1} total):
+        {/* Connection Status */}
+
+        {connectionRequest && (
+          <div className="bg-blue-50 p-4 rounded-lg border border-blue-200 mb-4">
+            <p className="text-blue-800 font-medium mb-3">
+              📍 Location Sharing Request
             </p>
-            <div className="flex flex-wrap gap-2">
-              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-green-100 text-green-800">
-                👤 You (Erfan)
-              </span>
-              {Array.from(connectedSenders.entries()).map(
-                ([senderId, senderName]) => (
-                  <span
-                    key={senderId}
-                    className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800"
-                  >
-                    👤 {senderName}
-                  </span>
-                )
+            <p className="text-blue-600 text-sm mb-3">
+              <strong>{currentSenderName}</strong> wants to share their location
+              with you.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={accept}
+                className="btn bg-green-500 text-white hover:bg-green-600"
+              >
+                Accept
+              </button>
+              <button
+                onClick={reject}
+                className="btn bg-red-500 text-white hover:bg-red-600"
+              >
+                Reject
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Active Senders Overview */}
+        {senderLocations.size > 0 && (
+          <div className="mt-6 p-6 border rounded-lg bg-gray-50">
+            <h3 className="text-xl font-semibold mb-4">
+              📍 Active Location Senders
+            </h3>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+              {Array.from(senderLocations.entries()).map(
+                ([senderId, data], index) => {
+                  const senderName =
+                    connectedSenders.get(senderId) || "Unknown";
+                  const color = senderColors[index % senderColors.length];
+
+                  return (
+                    <div
+                      key={senderId}
+                      className="p-4 bg-white rounded-lg border"
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        <div
+                          className="w-4 h-4 rounded-full"
+                          style={{ backgroundColor: color }}
+                        ></div>
+                        <h4 className="font-semibold text-gray-800">
+                          {senderName}
+                        </h4>
+                      </div>
+
+                      {data.currentLocation && (
+                        <div className="space-y-1 text-sm">
+                          <p className="text-gray-600">
+                            <strong>Lat:</strong>{" "}
+                            {data.currentLocation.latitude.toFixed(6)}
+                          </p>
+                          <p className="text-gray-600">
+                            <strong>Lng:</strong>{" "}
+                            {data.currentLocation.longitude.toFixed(6)}
+                          </p>
+                          <p className="text-gray-500">
+                            <strong>Updated:</strong>{" "}
+                            {new Date(
+                              data.currentLocation.timestamp
+                            ).toLocaleTimeString()}
+                          </p>
+                          <p className="text-gray-500">
+                            <strong>Points:</strong>{" "}
+                            {data.locationHistory.length}
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="mt-2">
+                        <span
+                          className={`inline-block px-2 py-1 rounded-full text-xs ${
+                            data.isSharing
+                              ? "bg-green-100 text-green-800"
+                              : "bg-gray-100 text-gray-800"
+                          }`}
+                        >
+                          {data.isSharing
+                            ? "📍 Sharing Location"
+                            : "❌ Not Sharing Location"}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                }
               )}
             </div>
-          </div>
 
-          {/* Chat Clear Notification */}
-          {chatCleared && (
-            <div className="mb-3 p-2 bg-yellow-50 border border-yellow-200 rounded-lg">
-              <p className="text-yellow-800 text-sm text-center">
-                💬 Chat history cleared. Starting fresh conversation.
-              </p>
+            <div className="flex gap-3 mb-4">
+              <button
+                onClick={() => setShowMap(true)}
+                className={`px-4 py-2 rounded-lg font-medium ${
+                  showMap
+                    ? "bg-blue-600 text-white"
+                    : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                }`}
+              >
+                View Map
+              </button>
+              <button
+                onClick={() => setShowMap(false)}
+                className={`px-4 py-2 rounded-lg font-medium ${
+                  !showMap
+                    ? "bg-blue-600 text-white"
+                    : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                }`}
+              >
+                Hide Map
+              </button>
+              {/* Reset Map View removed */}
             </div>
-          )}
 
-          {/* Messages Display */}
-          <div className="mb-4 h-64 overflow-y-auto border rounded-lg bg-white p-3">
-            {messages.length === 0 ? (
-              <p className="text-gray-500 text-center text-sm">
-                No messages yet. Start the group conversation!
+            {showMap && renderLeafletMap()}
+          </div>
+        )}
+
+        {/* Chat Section */}
+        {connectedSenders.size > 0 && (
+          <div className="mt-6 p-4 border rounded-lg bg-gray-50">
+            <h3 className="text-lg font-semibold text-gray-800 mb-4">
+              💬 Group Chat with Senders
+            </h3>
+
+            {/* Group Participants Info */}
+            <div className="mb-3 p-2 bg-green-50 border border-green-200 rounded-lg">
+              <p className="text-green-800 text-xs font-medium mb-1">
+                Group Participants ({connectedSenders.size + 1} total):
               </p>
-            ) : (
-              <div className="space-y-2">
-                {messages.map((msg) => (
-                  <div
-                    key={msg.id}
-                    className={`flex ${
-                      msg.isFromMe ? "justify-end" : "justify-start"
-                    }`}
-                  >
-                    <div
-                      className={`max-w-xs px-3 py-2 rounded-lg text-sm ${
-                        msg.isFromMe
-                          ? "bg-green-500 text-white"
-                          : "bg-gray-200 text-gray-800"
-                      }`}
+              <div className="flex flex-wrap gap-2">
+                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-green-100 text-green-800">
+                  👤 You (Erfan)
+                </span>
+                {Array.from(connectedSenders.entries()).map(
+                  ([senderId, senderName]) => (
+                    <span
+                      key={senderId}
+                      className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800"
                     >
-                      <div className="font-medium text-xs mb-1">
-                        {msg.isFromMe ? "You (Erfan)" : msg.senderName}
-                      </div>
-                      <div>{msg.message}</div>
-                      <div className="text-xs opacity-75 mt-1">
-                        {new Date(msg.timestamp).toLocaleTimeString()}
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                      👤 {senderName}
+                    </span>
+                  )
+                )}
+              </div>
+            </div>
+
+            {/* Chat Clear Notification */}
+            {chatCleared && (
+              <div className="mb-3 p-2 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <p className="text-yellow-800 text-sm text-center">
+                  💬 Chat history cleared. Starting fresh conversation.
+                </p>
               </div>
             )}
-          </div>
 
-          {/* Message Input */}
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder="Type your message to the group..."
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-black"
-              disabled={connectedSenders.size === 0}
-            />
-            <button
-              onClick={sendMessage}
-              disabled={!newMessage.trim() || connectedSenders.size === 0}
-              className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
-            >
-              Send
-            </button>
+            {/* Messages Display */}
+            <div className="mb-4 h-64 overflow-y-auto border rounded-lg bg-white p-3">
+              {messages.length === 0 ? (
+                <p className="text-gray-500 text-center text-sm">
+                  No messages yet. Start the group conversation!
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {messages.map((msg) => (
+                    <div
+                      key={msg.id}
+                      className={`flex ${
+                        msg.isFromMe ? "justify-end" : "justify-start"
+                      }`}
+                    >
+                      <div
+                        className={`max-w-xs px-3 py-2 rounded-lg text-sm ${
+                          msg.isFromMe
+                            ? "bg-green-500 text-white"
+                            : "bg-gray-200 text-gray-800"
+                        }`}
+                      >
+                        <div className="font-medium text-xs mb-1">
+                          {msg.isFromMe ? "You (Erfan)" : msg.senderName}
+                        </div>
+                        <div>{msg.message}</div>
+                        <div className="text-xs opacity-75 mt-1">
+                          {new Date(msg.timestamp).toLocaleTimeString()}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Message Input */}
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                onKeyPress={handleKeyPress}
+                placeholder="Type your message to the group..."
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-black"
+                disabled={connectedSenders.size === 0}
+              />
+              <button
+                onClick={sendMessage}
+                disabled={!newMessage.trim() || connectedSenders.size === 0}
+                className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
+              >
+                Send
+              </button>
+            </div>
           </div>
+        )}
+
+        {/* Instructions */}
+        <div className="mt-6 p-4 bg-gray-50 border rounded-lg">
+          <h4 className="font-semibold text-gray-800 mb-2">How it works:</h4>
+          <ol className="text-sm text-gray-600 space-y-1 list-decimal list-inside">
+            <li>Multiple senders can request connections to you</li>
+            <li>Accept or reject each sender individually</li>
+            <li>View all accepted senders' locations on one map</li>
+            <li>
+              Each sender has a different colored marker and tracking path
+            </li>
+            <li>
+              The map automatically fits to show all locations when first opened
+            </li>
+            <li>
+              Use "Reset Map View" to return to the overview of all locations
+            </li>
+            <li>
+              Status shows "📍 Sharing Location" when active and "❌ Not Sharing
+              Location" when stopped
+            </li>
+            <li>
+              After accepting connections, use the chat to communicate with
+              senders
+            </li>
+            <li>
+              Multiple receivers can join the same group chat and communicate
+              together
+            </li>
+            <li>All participants can see each other's messages in real-time</li>
+          </ol>
         </div>
-      )}
-
-      {/* Instructions */}
-      <div className="mt-6 p-4 bg-gray-50 border rounded-lg">
-        <h4 className="font-semibold text-gray-800 mb-2">How it works:</h4>
-        <ol className="text-sm text-gray-600 space-y-1 list-decimal list-inside">
-          <li>Multiple senders can request connections to you</li>
-          <li>Accept or reject each sender individually</li>
-          <li>View all accepted senders' locations on one map</li>
-          <li>Each sender has a different colored marker and tracking path</li>
-          <li>
-            The map automatically fits to show all locations when first opened
-          </li>
-          <li>
-            Use "Reset Map View" to return to the overview of all locations
-          </li>
-          <li>
-            Status shows "📍 Sharing Location" when active and "❌ Not Sharing
-            Location" when stopped
-          </li>
-          <li>
-            After accepting connections, use the chat to communicate with
-            senders
-          </li>
-          <li>
-            Multiple receivers can join the same group chat and communicate
-            together
-          </li>
-          <li>All participants can see each other's messages in real-time</li>
-        </ol>
       </div>
     </div>
   );
