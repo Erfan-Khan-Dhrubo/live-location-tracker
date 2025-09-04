@@ -11,6 +11,8 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import socket from "../utilities/socket";
 import SenderInfo from "../components/Receiver Components/SenderInfo";
+import SenderConnectionRequest from "../components/Receiver Components/SenderConnectionRequest";
+import SenderOverview from "../components/Receiver Components/SenderOverview";
 
 // Remove Leaflet's default method of finding marker image URLs
 // (because in React/Vite/Webpack builds, the default local image path breaks)
@@ -53,12 +55,15 @@ const myLocationIcon = new L.Icon({
 });
 
 // Component to handle map updates
+// A small React component whose only job is to “update” the Leaflet map view when locations are available
 function MapUpdater({ locations, mapRef, myCurrentLocation }) {
   const map = useMap(); // comes from react-leaflet, gives you the Leaflet map object
-  const hasInitialized = useRef(false); // ^
+  const hasInitialized = useRef(false); // It ensures the map fitting runs only once (when the map first loads), not on every update.
 
   useEffect(() => {
     if (!hasInitialized.current && map) {
+      // map exists (so the map is already created).
+      // hasInitialized.current === false (so it hasn’t adjusted bounds yet).
       // Only fit bounds initially when the map first loads
       const allPositions = [
         ...locations.flatMap((sender) =>
@@ -71,13 +76,23 @@ function MapUpdater({ locations, mapRef, myCurrentLocation }) {
 
       if (allPositions.length > 0) {
         const bounds = L.latLngBounds(allPositions);
-        map.invalidateSize();
+        // L.latLngBounds() is a Leaflet helper that creates a bounding box around a list of coordinates.
+        // Example: if you have points in Dhaka, Chittagong, and your location, it finds the smallest rectangle that covers all points.
+        // This is useful so the map automatically zooms/pans to fit everyone.
+
+        map.invalidateSize(); // forces Leaflet to recalculate the map layout and fix any glitches
         if (allPositions.length === 1) {
+          // map.setView(center, 15) → directly zooms in on that location (zoom level 15 ≈ city block level, quite close).
+          // This makes sense: if there’s only one person, we want to zoom in close to them, not show the whole world.
+
           map.setView(bounds.getCenter(), 15);
         } else {
           map.fitBounds(bounds, { padding: [20, 20] });
+          // map.fitBounds(bounds, { padding: [20, 20] }) → zooms/pans out so all points are visible on the screen, with a small padding (20px margin) so they aren’t right on the edge.
+          // This is like Google Maps’ “fit all markers” feature.
         }
         hasInitialized.current = true;
+        // It ensures the map auto-fits only on first load, not every time a new location is added
       }
     }
   }, [locations, map, myCurrentLocation]);
@@ -86,34 +101,6 @@ function MapUpdater({ locations, mapRef, myCurrentLocation }) {
 }
 
 const Receive = () => {
-  // const name = "Erfan";
-  // const room = "56";
-  // const [connectionRequest, setConnectionRequest] = useState(false);
-  // const [currentSenderId, setCurrentSenderId] = useState(null);
-  // const [currentSenderName, setCurrentSenderName] = useState("");
-  // const [showMap, setShowMap] = useState(false);
-  // const [connectedSenders, setConnectedSenders] = useState(new Map()); // senderId -> senderName
-  // // Map is a built-in JavaScript object (like Array or Set) that stores key → value pairs.
-  // // It’s similar to a normal object {}, but has some advantages:
-  // // ✅ Keys can be any type (not just strings)
-  // // ✅ Keeps the order of insertion
-  // // ✅ Provides handy methods (set, get, delete, has)
-  // // 📖 Example with Map
-  // //      const receivers = new Map();
-  // //      receivers.set("user1", { accepted: true, name: "Alice" }); // Add values
-  // //      receivers.set("user2", { accepted: false, name: "Bob" });
-  // //      console.log(receivers.get("user1")); // Get values  { accepted: true, name: "Alice" }
-  // //      console.log(receivers.has("user2")); // Check if key exists
-
-  // const [senderLocations, setSenderLocations] = useState(new Map()); // senderId -> { currentLocation, locationHistory, isSharing }
-  // const [myName, setMyName] = useState("");
-  // const [messages, setMessages] = useState([]); // Store chat messages
-  // const [newMessage, setNewMessage] = useState(""); // Current message input
-  // const [chatCleared, setChatCleared] = useState(false); // Track if chat was cleared
-  // const mapRef = useRef(null);
-  // const [myCurrentLocation, setMyCurrentLocation] = useState(null);
-  // const mapLocationWatchIdRef = useRef(null);
-
   // Your fixed name (could be the person using this client)
   const name = "Erfan";
 
@@ -131,6 +118,7 @@ const Receive = () => {
 
   // React state to control whether the map is visible
   const [showMap, setShowMap] = useState(false);
+
   // React state to keep track of all connected senders (users who connected to you)
   // We use a Map because:
   //   - Keys can be anything (not just strings)
@@ -138,6 +126,7 @@ const Receive = () => {
   //   - Has built-in methods like set(), get(), delete(), has()
   // Example: connectedSenders.set("user123", "Alice");
   const [connectedSenders, setConnectedSenders] = useState(new Map());
+
   // React state to keep track of sender locations
   // Map where key = senderId, value = { currentLocation, locationHistory, isSharing }
   //   - currentLocation → { latitude, longitude }
@@ -147,12 +136,16 @@ const Receive = () => {
 
   // React state to store your own name (can be updated by input field)
   const [myName, setMyName] = useState("");
+
   // React state to keep a list of chat messages (array of objects or strings)
   const [messages, setMessages] = useState([]);
+
   // React state for the text input of the current message being typed
   const [newMessage, setNewMessage] = useState("");
+
   // React state to track if the chat was cleared (so UI can reset accordingly)
   const [chatCleared, setChatCleared] = useState(false);
+
   // useRef to store reference to the map instance (so you can interact with it directly without re-rendering)
   const mapRef = useRef(null);
 
@@ -162,6 +155,7 @@ const Receive = () => {
   // useRef to store the ID returned by navigator.geolocation.watchPosition()
   // This allows you to stop watching later with navigator.geolocation.clearWatch()
   const mapLocationWatchIdRef = useRef(null);
+
   // Color palette for different senders
   const senderColors = [
     "red",
@@ -388,8 +382,13 @@ const Receive = () => {
   };
 
   const renderLeafletMap = () => {
-    if (senderLocations.size === 0) return null;
+    if (senderLocations.size === 0) return null; // If there are no senderLocations, it immediately returns null
 
+    // Converts the senderLocations Map into an array of objects.
+    // Each object contains:
+    // senderId
+    // senderName (looked up in connectedSenders, fallback "Unknown")
+    // all other data (spread operator ...data → currentLocation, locationHistory, isSharing, etc.).
     const locations = Array.from(senderLocations.entries()).map(
       ([senderId, data]) => ({
         senderId,
@@ -476,7 +475,7 @@ const Receive = () => {
                   </Popup>
                 </Marker>
 
-                {/* Line between receiver and sender (Uber-style) */}
+                {/* Line between receiver and sender */}
                 {myCurrentLocation && (
                   <Polyline // Polyline → Leaflet component to show a line on the map.
                     positions={[
@@ -529,134 +528,27 @@ const Receive = () => {
           </p>
         </div>
 
+        {/* showing a list of connected senders in your UI */}
         <SenderInfo connectedSenders={connectedSenders}></SenderInfo>
 
         {/* Connection Status */}
+        <SenderConnectionRequest
+          connectionRequest={connectionRequest}
+          currentSenderName={currentSenderName}
+          accept={accept}
+          reject={reject}
+        ></SenderConnectionRequest>
 
-        {connectionRequest && (
-          <div className="bg-blue-50 p-4 rounded-lg border border-blue-200 mb-4">
-            <p className="text-blue-800 font-medium mb-3">
-              📍 Location Sharing Request
-            </p>
-            <p className="text-blue-600 text-sm mb-3">
-              <strong>{currentSenderName}</strong> wants to share their location
-              with you.
-            </p>
-            <div className="flex gap-2">
-              <button
-                onClick={accept}
-                className="btn bg-green-500 text-white hover:bg-green-600"
-              >
-                Accept
-              </button>
-              <button
-                onClick={reject}
-                className="btn bg-red-500 text-white hover:bg-red-600"
-              >
-                Reject
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Active Senders Overview */}
-        {senderLocations.size > 0 && (
-          <div className="mt-6 p-6 border rounded-lg bg-gray-50">
-            <h3 className="text-xl font-semibold mb-4">
-              📍 Active Location Senders
-            </h3>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
-              {Array.from(senderLocations.entries()).map(
-                ([senderId, data], index) => {
-                  const senderName =
-                    connectedSenders.get(senderId) || "Unknown";
-                  const color = senderColors[index % senderColors.length];
-
-                  return (
-                    <div
-                      key={senderId}
-                      className="p-4 bg-white rounded-lg border"
-                    >
-                      <div className="flex items-center gap-2 mb-2">
-                        <div
-                          className="w-4 h-4 rounded-full"
-                          style={{ backgroundColor: color }}
-                        ></div>
-                        <h4 className="font-semibold text-gray-800">
-                          {senderName}
-                        </h4>
-                      </div>
-
-                      {data.currentLocation && (
-                        <div className="space-y-1 text-sm">
-                          <p className="text-gray-600">
-                            <strong>Lat:</strong>{" "}
-                            {data.currentLocation.latitude.toFixed(6)}
-                          </p>
-                          <p className="text-gray-600">
-                            <strong>Lng:</strong>{" "}
-                            {data.currentLocation.longitude.toFixed(6)}
-                          </p>
-                          <p className="text-gray-500">
-                            <strong>Updated:</strong>{" "}
-                            {new Date(
-                              data.currentLocation.timestamp
-                            ).toLocaleTimeString()}
-                          </p>
-                          <p className="text-gray-500">
-                            <strong>Points:</strong>{" "}
-                            {data.locationHistory.length}
-                          </p>
-                        </div>
-                      )}
-
-                      <div className="mt-2">
-                        <span
-                          className={`inline-block px-2 py-1 rounded-full text-xs ${
-                            data.isSharing
-                              ? "bg-green-100 text-green-800"
-                              : "bg-gray-100 text-gray-800"
-                          }`}
-                        >
-                          {data.isSharing
-                            ? "📍 Sharing Location"
-                            : "❌ Not Sharing Location"}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                }
-              )}
-            </div>
-
-            <div className="flex gap-3 mb-4">
-              <button
-                onClick={() => setShowMap(true)}
-                className={`px-4 py-2 rounded-lg font-medium ${
-                  showMap
-                    ? "bg-blue-600 text-white"
-                    : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                }`}
-              >
-                View Map
-              </button>
-              <button
-                onClick={() => setShowMap(false)}
-                className={`px-4 py-2 rounded-lg font-medium ${
-                  !showMap
-                    ? "bg-blue-600 text-white"
-                    : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                }`}
-              >
-                Hide Map
-              </button>
-              {/* Reset Map View removed */}
-            </div>
-
-            {showMap && renderLeafletMap()}
-          </div>
-        )}
+        {/* This block is about showing a list of active location senders (those who are sharing their location), 
+        plus controls for showing/hiding the map.*/}
+        <SenderOverview
+          senderLocations={senderLocations}
+          connectedSenders={connectedSenders}
+          senderColors={senderColors}
+          showMap={showMap}
+          setShowMap={setShowMap}
+          renderLeafletMap={renderLeafletMap}
+        ></SenderOverview>
 
         {/* Chat Section */}
         {connectedSenders.size > 0 && (
