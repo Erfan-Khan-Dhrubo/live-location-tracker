@@ -13,6 +13,10 @@ import socket from "../utilities/socket";
 import SenderInfo from "../components/Receiver Components/SenderInfo";
 import SenderConnectionRequest from "../components/Receiver Components/SenderConnectionRequest";
 import SenderOverview from "../components/Receiver Components/SenderOverview";
+import ReceiverInstructions from "../components/Receiver Components/ReceiverInstructions";
+import GrpParticipants from "../components/Receiver Components/GrpParticipants";
+import ReceiverMessageDisplay from "../components/Receiver Components/ReceiverMessageDisplay";
+import ReceiverMsgInput from "../components/Receiver Components/ReceiverMsgInput";
 
 // Remove Leaflet's default method of finding marker image URLs
 // (because in React/Vite/Webpack builds, the default local image path breaks)
@@ -374,13 +378,6 @@ const Receive = () => {
     }
   };
 
-  const handleKeyPress = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
-  };
-
   const renderLeafletMap = () => {
     if (senderLocations.size === 0) return null; // If there are no senderLocations, it immediately returns null
 
@@ -518,165 +515,69 @@ const Receive = () => {
 
   return (
     <div className="w-full bg-blue-50">
-      <div className="w-9/10 mx-auto py-12">
-        <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
-          <h3 className="text-green-800 font-semibold mb-2">
-            📍 Location Receiver
-          </h3>
-          <p className="text-green-600 text-sm">
-            Receive and view location updates from multiple senders
-          </p>
-        </div>
-
-        {/* showing a list of connected senders in your UI */}
-        <SenderInfo connectedSenders={connectedSenders}></SenderInfo>
-
-        {/* Connection Status */}
-        <SenderConnectionRequest
-          connectionRequest={connectionRequest}
-          currentSenderName={currentSenderName}
-          accept={accept}
-          reject={reject}
-        ></SenderConnectionRequest>
-
-        {/* This block is about showing a list of active location senders (those who are sharing their location), 
-        plus controls for showing/hiding the map.*/}
-        <SenderOverview
-          senderLocations={senderLocations}
-          connectedSenders={connectedSenders}
-          senderColors={senderColors}
-          showMap={showMap}
-          setShowMap={setShowMap}
-          renderLeafletMap={renderLeafletMap}
-        ></SenderOverview>
-
-        {/* Chat Section */}
-        {connectedSenders.size > 0 && (
-          <div className="mt-6 p-4 border rounded-lg bg-gray-50">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">
-              💬 Group Chat with Senders
+      <div className="w-9/10 mx-auto py-12 flex flex-col md:flex-row gap-8">
+        <div className="flex-1">
+          <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+            <h3 className="text-green-800 font-semibold mb-2">
+              📍 Location Receiver
             </h3>
-
-            {/* Group Participants Info */}
-            <div className="mb-3 p-2 bg-green-50 border border-green-200 rounded-lg">
-              <p className="text-green-800 text-xs font-medium mb-1">
-                Group Participants ({connectedSenders.size + 1} total):
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-green-100 text-green-800">
-                  👤 You (Erfan)
-                </span>
-                {Array.from(connectedSenders.entries()).map(
-                  ([senderId, senderName]) => (
-                    <span
-                      key={senderId}
-                      className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800"
-                    >
-                      👤 {senderName}
-                    </span>
-                  )
-                )}
-              </div>
-            </div>
-
-            {/* Chat Clear Notification */}
-            {chatCleared && (
-              <div className="mb-3 p-2 bg-yellow-50 border border-yellow-200 rounded-lg">
-                <p className="text-yellow-800 text-sm text-center">
-                  💬 Chat history cleared. Starting fresh conversation.
-                </p>
-              </div>
-            )}
-
-            {/* Messages Display */}
-            <div className="mb-4 h-64 overflow-y-auto border rounded-lg bg-white p-3">
-              {messages.length === 0 ? (
-                <p className="text-gray-500 text-center text-sm">
-                  No messages yet. Start the group conversation!
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {messages.map((msg) => (
-                    <div
-                      key={msg.id}
-                      className={`flex ${
-                        msg.isFromMe ? "justify-end" : "justify-start"
-                      }`}
-                    >
-                      <div
-                        className={`max-w-xs px-3 py-2 rounded-lg text-sm ${
-                          msg.isFromMe
-                            ? "bg-green-500 text-white"
-                            : "bg-gray-200 text-gray-800"
-                        }`}
-                      >
-                        <div className="font-medium text-xs mb-1">
-                          {msg.isFromMe ? "You (Erfan)" : msg.senderName}
-                        </div>
-                        <div>{msg.message}</div>
-                        <div className="text-xs opacity-75 mt-1">
-                          {new Date(msg.timestamp).toLocaleTimeString()}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Message Input */}
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                onKeyPress={handleKeyPress}
-                placeholder="Type your message to the group..."
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-black"
-                disabled={connectedSenders.size === 0}
-              />
-              <button
-                onClick={sendMessage}
-                disabled={!newMessage.trim() || connectedSenders.size === 0}
-                className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
-              >
-                Send
-              </button>
-            </div>
+            <p className="text-green-600 text-sm">
+              Receive and view location updates from multiple senders
+            </p>
           </div>
-        )}
+
+          {/* showing a list of connected senders in your UI */}
+          <SenderInfo connectedSenders={connectedSenders}></SenderInfo>
+
+          {/* Connection Status */}
+          <SenderConnectionRequest
+            connectionRequest={connectionRequest}
+            currentSenderName={currentSenderName}
+            accept={accept}
+            reject={reject}
+          ></SenderConnectionRequest>
+
+          {/* This block is about showing a list of active location senders (those who are sharing their location), 
+        plus controls for showing/hiding the map.*/}
+          <SenderOverview
+            senderLocations={senderLocations}
+            connectedSenders={connectedSenders}
+            senderColors={senderColors}
+            showMap={showMap}
+            setShowMap={setShowMap}
+            renderLeafletMap={renderLeafletMap}
+          ></SenderOverview>
+
+          {/* Chat Section */}
+          {connectedSenders.size > 0 && (
+            <div className="mt-6 p-4 border rounded-lg bg-gray-50">
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">
+                💬 Group Chat with Senders
+              </h3>
+
+              {/* Group Participants Info */}
+              <GrpParticipants
+                connectedSenders={connectedSenders}
+              ></GrpParticipants>
+
+              {/* Messages Display */}
+              <ReceiverMessageDisplay
+                messages={messages}
+              ></ReceiverMessageDisplay>
+
+              {/* Message Input */}
+              <ReceiverMsgInput
+                newMessage={newMessage}
+                setNewMessage={setNewMessage}
+                connectedSenders={connectedSenders}
+                sendMessage={sendMessage}
+              ></ReceiverMsgInput>
+            </div>
+          )}
+        </div>
 
         {/* Instructions */}
-        <div className="mt-6 p-4 bg-gray-50 border rounded-lg">
-          <h4 className="font-semibold text-gray-800 mb-2">How it works:</h4>
-          <ol className="text-sm text-gray-600 space-y-1 list-decimal list-inside">
-            <li>Multiple senders can request connections to you</li>
-            <li>Accept or reject each sender individually</li>
-            <li>View all accepted senders' locations on one map</li>
-            <li>
-              Each sender has a different colored marker and tracking path
-            </li>
-            <li>
-              The map automatically fits to show all locations when first opened
-            </li>
-            <li>
-              Use "Reset Map View" to return to the overview of all locations
-            </li>
-            <li>
-              Status shows "📍 Sharing Location" when active and "❌ Not Sharing
-              Location" when stopped
-            </li>
-            <li>
-              After accepting connections, use the chat to communicate with
-              senders
-            </li>
-            <li>
-              Multiple receivers can join the same group chat and communicate
-              together
-            </li>
-            <li>All participants can see each other's messages in real-time</li>
-          </ol>
-        </div>
+        <ReceiverInstructions></ReceiverInstructions>
       </div>
     </div>
   );
