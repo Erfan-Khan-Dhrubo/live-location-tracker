@@ -48,7 +48,16 @@ The system simulates a real-world use case of **delivery tracking**, **emergency
 ## 📸 Screenshots  
 
 ### Sender View  
-<img src="media/pic1.png" width="600" />  
+<table>
+  <tr>
+    <td><img src="media/pic1.png" width="400" /></td>
+    <td><img src="media/pic5.png" width="400" /></td>
+  </tr>
+  <tr>
+    <td colspan="2" style="text-align:center;"><img src="media/pic6.png" width="400" /></td>
+  </tr>
+</table>
+
 
 ### Receiver Views  
 <table>
