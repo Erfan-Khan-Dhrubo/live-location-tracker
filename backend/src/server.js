@@ -22,9 +22,33 @@ const io = new Server(server, {
 
 // Store active connections: { room: { senderId: { receivers: Set, name: string } } }
 const activeConnections = new Map();
+// Purpose: Keeps track of all senders and their connected receivers inside each room.
+// Structure:
+// Outer Map: key = room name (string), value = another Map
+// Inner Map: key = senderId (socket.id), value = { receivers: Set, name: string }
+// Example:
+// Imagine we have:
+// Room: "room1"
+// Sender: "socket1" (Alice)
+// Receivers: "socket2" (Bob), "socket3" (Charlie)
+// activeConnections = Map {
+//   "room1" => Map {
+//     "socket1" => {
+//       receivers: Set { "socket2", "socket3" },
+//       name: "Alice"
+//     }
+//   }
+// }
 
 // Store user names: { socketId: name }
 const userNames = new Map();
+// Purpose: Stores the username of each connected socket for easy reference anywhere in the server.
+// Example:
+// userNames = Map {
+//   "socket1" => "Alice",
+//   "socket2" => "Bob",
+//   "socket3" => "Charlie"
+// }
 
 // Socket.IO events
 io.on("connection", (socket) => {
@@ -32,7 +56,7 @@ io.on("connection", (socket) => {
 
   // Listen for client to send their name
   socket.on("set_name", (name) => {
-    userNames.set(socket.id, name);
+    userNames.set(socket.id, name); // Stored in userNames map.
     console.log(`User ${socket.id} set name: ${name}`);
   });
 
@@ -48,9 +72,13 @@ io.on("connection", (socket) => {
     if (!activeConnections.has(room)) {
       activeConnections.set(room, new Map());
     }
+    // activeConnections is a Map that stores all active rooms.
+    // Structure: room → Map(senderId → { receivers: Set, name }).
+    // If this room doesn’t exist yet, create a new Map for it.
 
-    const roomConnections = activeConnections.get(room);
+    const roomConnections = activeConnections.get(room); // roomConnections is now a Map: senderId → { receivers: Set, name }.
     if (!roomConnections.has(socket.id)) {
+      // If this sender hasn’t been added to the room yet, add them.
       roomConnections.set(socket.id, {
         receivers: new Set(),
         name: userNames.get(socket.id),
@@ -69,13 +97,17 @@ io.on("connection", (socket) => {
     if (
       activeConnections.has(room) &&
       activeConnections.get(room).has(senderId)
+      // Check if the room exists in activeConnections.
+      // Check if the sender exists in that room.
+      // Only proceed if both exist—otherwise, ignore.
     ) {
-      const roomConnections = activeConnections.get(room);
-      const senderData = roomConnections.get(senderId);
-      senderData.receivers.add(socket.id);
+      const roomConnections = activeConnections.get(room); // Get the Map of all senders in this room.
+      const senderData = roomConnections.get(senderId); // Get data for the specific sender who is being accepted.
+      senderData.receivers.add(socket.id); // Add the receiver’s socket ID to the sender’s receivers Set.
 
       // Notify sender that this specific receiver accepted
       socket.to(senderId).emit("accept_connection", {
+        // Notify the sender that this specific receiver accepted their connection.
         receiverId: socket.id,
         receiverName: userNames.get(socket.id),
       });
